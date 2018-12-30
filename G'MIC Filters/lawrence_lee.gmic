@@ -1,0 +1,365 @@
+#@gmic
+#
+# File        : lawrence_lee.gmic
+#               ( G'MIC commands file )
+#
+# Description : G'MIC filters made by Lawrence Lee.
+#
+# Copyright   : Lawrence Lee
+#
+# License     : GNU GPLv3
+#               ( https://www.gnu.org/licenses/gpl.html )
+#
+# Copyright (C) 2018 Lawrence Lee
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+#-------------------------------------------------------------------------------
+
+#@gui <b>Testing</b>
+#@gui <i>Lawrence</i>
+
+#@gui Focus Blur : lawrence37_focus_blur, lawrence37_focus_blur_p(0)
+#@gui : Radius = float(37,0.5,200)
+#@gui : sep = separator()
+#@gui : note = note{"<b>Onion ring</b>"}
+#@gui : Strength = float(0,0,100)
+#@gui : Size = float(5,0,100)
+#@gui : sep = separator()
+#@gui : Gamma = float(2.2,0.2,5)
+#@gui : sep = separator()
+#@gui : Preview kernel = bool(0)
+#@gui : Preview type = choice("Full","Forward horizontal","Forward vertical","Backward horizontal","Backward vertical","Duplicate top","Duplicate left",Duplicate bottom","Duplicate right","Duplicate horizontal","Duplicate vertical","Checkered","Checkered inverse")
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : Blurs an image to simulate out-of-focus blur produced by a typical lens
+#@gui : with a circular aperture. The gamma is the gamma the image is encoded
+#@gui : in.
+#@gui : "}
+
+lawrence37_focus_blur_p:
+if {$-2==0}
+  -gui_split_preview "-lawrence37_focus_blur ${1--3}",$-1
+else
+  radius={max(0.5,$1)}
+  onion={max(0,$2)}
+  thickness={max(0,$3)}
+  preview_kernel=$5
+  samples=16
+  +lawrence37_bokeh_ball $radius,$samples,255,1,$onion,$thickness
+  -keep[-1]
+endif
+
+
+lawrence37_focus_blur:
+
+# Variables.
+radius={max(0.5,$1)}
+onion={max(0,$2)}
+thickness={max(0,$3)}
+gamma={max(0,$4)}
+radius_ceil={ceil($radius)}
+samples=16
+
+-repeat $! -local[$>]
+
+-name[0] image
+
+# Special case.
+if {$radius<=0.5} -return endif
+
+# Create white image.
+-input 100%,100%,1,1,255
+-name[-1] white
+
+# Convert to linear.
+if {$gamma!=1} -apply_gamma[image] {1/$gamma} endif
+
+# Expand to allow blurring along edges.
+-crop[image,white] 0,0,{w-1+2*$radius_ceil},{h-1+2*$radius_ceil}
+
+# Generate kernel.
++lawrence37_bokeh_ball[-1] $radius,$samples,1,0,$onion,$thickness
+-name[-1] kernel
+
+# Convolve image and white.
+-convolve_fft[image] [kernel]
+-convolve_fft[white] [kernel]
+-name[image,white] blurred,mask
+-remove[kernel]
+
+# Crop the expansion.
+-crop[blurred,mask] 0,0,{w-1-2*$radius_ceil},{h-1-2*$radius_ceil}
+
+# Divide "blurred" by "mask" to retain brightness along edges.
++blend[blurred,mask] divide
+-name[-1] result
+-remove[blurred]
+if {s#$result==4} # Handle alpha channel.
+  +channels[result] 3
+  -name[-1] alpha
+  -remove_opacity[result]
+  -div[alpha] [mask]
+  -remove[mask]
+  -mul[alpha] 256 # Max value is 256 instead of 255?!
+  -append[result] [alpha],c
+  -remove[alpha]
+else
+  -remove[mask]
+endif
+
+# Apply gamma.
+if {$gamma!=1} -apply_gamma[result] $gamma endif
+
+-endlocal -done
+-return
+
+# ------------------------------------------------------------------------------
+
+#@gui Focus Sharpen : lawrence37_focus_sharpen, lawrence37_focus_sharpen_p(0)
+#@gui : Radius = float(5,0,100)
+#@gui : Onion ring = float(0,0,100)
+#@gui : Onion ring thickness = float(5,0,100)
+#@gui : Denoise = float(0,-4,4)
+#@gui : Border correction = float(10,0,20)
+#@gui : Border interpolation = choice("bicubic","nearest","average","linear","Lanczos")
+#@gui : Gamma = float(2.2,0.2,5)
+#@gui : Use built-in deconvolution (no denoise) = bool(0)
+#@gui : sep = separator()
+#@gui : Preview kernel = bool(0)
+#@gui : Preview type = choice("Full","Forward horizontal","Forward vertical","Backward horizontal","Backward vertical","Duplicate top","Duplicate left",Duplicate bottom","Duplicate right","Duplicate horizontal","Duplicate vertical","Checkered","Checkered inverse")
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : Sharpens out-of-focus images produced by typical lenses with circular
+#@gui : apertures. Border correction reduces \"ringing\" artifacts along the
+#@gui : border of the image. Bicubic and Lanczos border interpolation offer the
+#@gui : best results at almost no additional processing cost. The gamma is the
+#@gui : gamma the picture is encoded in. This filter uses the discrete Fourier
+#@gui : transform to deconvolve the blurred image. The denoise parameter has no
+#@gui : effect when using G'MIC's built-in FFT deconvolution, which appears to
+#@gui : produce the same results as when \"denoise\" is set to zero.
+#@gui : "}
+
+lawrence37_focus_sharpen_p:
+if {$-2==0}
+  -gui_split_preview "-lawrence37_focus_sharpen ${1--3}",$-1
+else
+  radius={max(0.5,$1)}
+  onion={max(0,$2)}
+  thickness={max(0,$3)}
+  samples=16
+  +lawrence37_bokeh_ball $radius,$samples,255,1,$onion,$thickness
+  -keep[-1]
+endif
+
+
+lawrence37_focus_sharpen:
+
+# Variables.
+radius={max(0.5,$1)}
+onion={max(0,$2)}
+thickness={max(0,$3)}
+epsilon={10^($4-3)}
+extension={round($radius*max(0,$5))}
+if {$6==0}
+  interp=3
+elif {$6<=3}
+  interp={$6-1}
+else
+  interp=$6
+endif
+gamma={max(0,$7)}
+use_built_in=$8
+samples=16
+
+# Special case.
+if {$radius==0} -return endif
+
+-repeat $! -local[$>]
+
+-name[0] image
+
+# Convert to linear.
+if {$gamma!=1}
+  command=-cut\ 0,100%\ -apply_gamma\ {1/$gamma}
+  -apply_channels[image] {``$command},rgb
+endif
+
+# Make edges wrap to prevent ringing effect.
+-lawrence37_tile_lazy[image] $extension,$extension,$interp
+
+# Generate kernel.
++lawrence37_bokeh_ball $radius,$samples,1,0,$onion,$thickness
+-name[-1] kernel
+
+# Deconvolve image.
+if {$use_built_in}
+  -deconvolve_fft[image] [kernel]
+  -remove[kernel]
+else
+  image_w={w#$image}
+  image_h={h#$image}
+  image_is={is#$image}
+  kernel_w={w#$kernel}
+  kernel_h={h#$kernel}
+
+  # Resize kernel.
+  -crop[kernel] 0,0,{$image_w-1},{$image_h-1}
+  -shift[kernel] {-$kernel_w/2},{-$kernel_h/2},0,0,2
+
+  # Fourier transform.
+  -fft[image]
+  -name[image,{$image+1}] image_re,image_im
+  -fft[kernel]
+  -name[kernel,{$kernel+1}] kernel_re,kernel_im
+
+  # Deconvolve.
+  -div_complex[image_re,image_im] [kernel_re,kernel_im],$epsilon
+  -remove[kernel_re,kernel_im]
+  -name[-2,-1] quo_re,quo_im
+
+  # Inverse Fourier transform.
+  -ifft[quo_re,quo_im]
+  -name[-2,-1] deconv_re,deconv_im
+  -remove[deconv_im]
+
+  # Fix shift in lightness.
+  -mul[-1] {$image_is/is}
+endif
+
+-name[-1] sharpened
+
+# Crop the expansion.
+-crop[sharpened] 0,0,{w-1-$extension},{h-1-$extension}
+
+# Apply gamma.
+if {$gamma!=1}
+  command=-cut\ 0,100%\ -apply_gamma\ $gamma
+  -apply_channels[sharpened] {``$command},rgb
+endif
+
+-endlocal -done
+-return
+
+#-------------------------------------------------------------------------------
+
+#@gui Bokeh Ball : lawrence37_bokeh_ball, lawrence37_bokeh_ball
+#@gui : Radius = float(37,0.5,100)
+#@gui : Antialiasing samples = int(4,1,16)
+#@gui : Intensity = float(255,0,255)
+#@gui : Normalize to intensity = bool(1)
+#@gui : sep = separator()
+#@gui : note = note{"<b>Onion ring</b>"}
+#@gui : Strength = float(0,0,100)
+#@gui : Size = float(5,0,100)
+
+lawrence37_bokeh_ball:
+
+# Variables.
+radius={max(0,$1)}
+samples={round(max(1,$2))}
+intensity={max(0,$3)}
+normalize=$4
+onion={max(0,$5)}
+thickness={$radius*max(0,$6)/100}
+
+# Draw circle with antialiasing.
++shape_circle {2*$radius*$samples}
+-name[-1] ball
+if {$samples>1} -resize2dx[ball] {100/$samples}%,2 endif
+
+# Create onion ring by applying unsharp mask.
+thick_ceil={ceil($thickness)}
+-crop[ball] {-$thick_ceil},{-$thick_ceil},{w-1+$thick_ceil},{h-1+$thick_ceil}
+-unsharp[ball] $thickness,$onion
+-cut[ball] 0,100%
+-crop[ball] {$thick_ceil},{$thick_ceil},{w-1-$thick_ceil},{h-1-$thick_ceil}
+
+# Normalize.
+if {$normalize==0} -mul[ball] {$intensity/is#$ball}
+else -normalize[ball] 0,$intensity
+endif
+
+-keep[ball]
+-return
+
+
+# ------------------------------------------------------------------------------
+
+# #@gui Lazy Tile : lawrence37_tile_lazy, lawrence37_tile_lazy
+# #@gui : x = int(37,1,100)
+# #@gui : y = int(37,1,100)
+# #@gui : Interpolation = choice("nearest","average","linear","bicubic","lanczos")
+
+lawrence37_tile_lazy:
+
+pad_x={round($1)}
+pad_y={round($2)}
+if {$3<=2} interp={$3+1}
+else interp={$3+2}
+endif
+
+-repeat $! -local[$>]
+
+-name[0] image
+
+if {$pad_y>0}
+
+# Bottom
++crop[image] 0,100%,100%,100%
+-name[-1] bottom
+
+# Top
++crop[image] 0,0,100%,0
+-name[-1] top
+
+# Horizontal
++append[bottom,top] y
+-name[-1] horz
+-remove[top,bottom]
+-resize[horz] 100%,{$pad_y+2},100%,100%,$interp
+-crop[horz] 0,1,100%,{h-2}
+
+# Attach horizontal to bottom.
+-append[image,horz] y
+
+endif
+
+if {$pad_x>0}
+
+# Right
++crop[image] 100%,0,100%,100%
+-name[-1] right
+
+# Left
++crop[image] 0,0,0,100%
+-name[-1] left
+
+# Vertical
++append[right,left] x
+-name[-1] vert
+-remove[left,right]
+-resize[vert] {$pad_x+2},100%,100%,100%,$interp
+-crop[vert] 1,0,{w-2},100%
+
+# Attach vertical to right
+-append[image,vert] x
+
+endif
+
+-endlocal -done
+-return
+
+
