@@ -35,7 +35,7 @@ maximum set frequency.
 '''
 
 
-BASE_PATH = "/sys/devices/system/cpu/cpu"
+BASE_PATH = '/sys/devices/system/cpu/cpu'
 
 
 def calc_avg_freq(a, b, core):
@@ -70,10 +70,10 @@ def get_cpu_times(core):
     Gets and returns the CPU times since boot categorized by user, nice,
     system, idle, and wait.
     '''
-    times_str = ""
-    pattern = "cpu" + core
+    times_str = ''
+    pattern = 'cpu' + core
 
-    with open("/proc/stat", 'r') as file_in:
+    with open('/proc/stat', 'r') as file_in:
         for line in file_in:
             if(re.match(pattern, line)):
                 times_str = line
@@ -87,7 +87,7 @@ def get_cur_freq(core):
     Gets and returns the core's (or average CPU's if no core is specified)
     current frequency.
     '''
-    CUR_FREQ_PATH = "scaling_cur_freq"
+    CUR_FREQ_PATH = 'scaling_cur_freq'
     return get_xxx_freq(core, CUR_FREQ_PATH)
 
 
@@ -96,7 +96,7 @@ def get_max_freq(core):
     Gets and returns the core's (or average CPU's if no core is specified)
     maximum frequency.
     '''
-    MAX_FREQ_PATH = "cpuinfo_max_freq"
+    MAX_FREQ_PATH = 'cpuinfo_max_freq'
     return get_xxx_freq(core, MAX_FREQ_PATH)
 
 
@@ -123,9 +123,9 @@ def get_xxx_freq(core, file_name):
     Gets and returns the core's (or average CPU's if no core is specified)
     frequency from the specifed file.
     '''
-    SUFFIX_PATH = "/cpufreq/"
-    if(core == ""):  # Average all cores.
-        paths = glob.glob(BASE_PATH + "[0-9]*" + SUFFIX_PATH + file_name)
+    SUFFIX_PATH = '/cpufreq/'
+    if(core == ''):  # Average all cores.
+        paths = glob.glob(BASE_PATH + '[0-9]*' + SUFFIX_PATH + file_name)
     else:
         paths = [BASE_PATH + core + SUFFIX_PATH + file_name]
 
