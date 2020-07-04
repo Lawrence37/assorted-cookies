@@ -1,3 +1,4 @@
+#!/bin/env python
 '''
 CPU Utilization for Linux, written in Python 3
 
@@ -169,25 +170,30 @@ def validate_args():
         print_help()
         exit(1)
 
+def main():
+    # Handle command-line arguments.
+    validate_args()
+    core_num = parse_core_num()
+    sample_time = parse_sample_time()
 
-# Handle command-line arguments.
-validate_args()
-core_num = parse_core_num()
-sample_time = parse_sample_time()
+    # Sample initial conditions.
+    data_1 = get_cpu_times(core_num)
+    freq_1 = get_cur_freq(core_num)
 
-# Sample initial conditions.
-data_1 = get_cpu_times(core_num)
-freq_1 = get_cur_freq(core_num)
+    # Wait for sample time.
+    time.sleep(sample_time)
 
-# Wait for sample time.
-time.sleep(sample_time)
+    # Sample final conditions.
+    data_2 = get_cpu_times(core_num)
+    freq_2 = get_cur_freq(core_num)
 
-# Sample final conditions.
-data_2 = get_cpu_times(core_num)
-freq_2 = get_cur_freq(core_num)
+    # Calculate and output core/CPU utilization.
+    normalized_freq = calc_avg_freq(freq_1, freq_2, core_num)
+    percentages = calc_utilization(data_2, data_1, normalized_freq)
+    output(percentages)
 
-# Calculate and output core/CPU utilization.
-normalized_freq = calc_avg_freq(freq_1, freq_2, core_num)
-percentages = calc_utilization(data_2, data_1, normalized_freq)
-output(percentages)
+def run():
+    if __name__ == '__main__':
+        main()
 
+run()
