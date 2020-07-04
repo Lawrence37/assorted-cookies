@@ -1,4 +1,13 @@
 #!/bin/env python
+
+
+import argparse
+import glob     # glob(string)
+import pathlib  # Path
+import re       # match(string, string)
+import time     # sleep(float)
+
+
 '''
 CPU Utilization for Linux, written in Python 3
 
@@ -20,23 +29,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 '''
 Prints the (near) instantaneous core/CPU utilization as percentages of user,
-nice, system, idle, and wait loads. Utilization is the percentage of the core or
-cpu's maximum processing capacity given the number of active cores and maximum
-set frequency.
+nice, system, idle, and wait loads. Utilization is the percentage of the core
+or cpu's maximum processing capacity given the number of active cores and
+maximum set frequency.
 '''
 
 
-import argparse
-import glob     # glob(string)
-import pathlib  # Path
-import re       # match(string, string)
-import time     # sleep(float)
-
-
-base_path = "/sys/devices/system/cpu/cpu"
-suffix_path = "/cpufreq/"
-cur_freq_path = "scaling_cur_freq"
-max_freq_path = "cpuinfo_max_freq"
+BASE_PATH = "/sys/devices/system/cpu/cpu"
 
 
 def calc_avg_freq(a, b, core):
@@ -45,6 +44,7 @@ def calc_avg_freq(a, b, core):
     core's maximum frequency.
     '''
     return (a + b) / get_max_freq(core) / 2
+
 
 def calc_utilization(final, initial, freq):
     '''
@@ -58,11 +58,12 @@ def calc_utilization(final, initial, freq):
 
     if(total_time > 0):
         percentages = [100 * x / total_time * freq for x in deltas]
-        percentages[3] += 100 - sum(percentages) # CPU idle.
+        percentages[3] += 100 - sum(percentages)  # CPU idle.
     else:
         percentages = [0.0, 0.0, 0.0, 100.0, 0.0]
 
     return percentages
+
 
 def get_cpu_times(core):
     '''
@@ -80,26 +81,31 @@ def get_cpu_times(core):
 
     return [float(x) for x in times_str.split()[1:6]]
 
+
 def get_cur_freq(core):
     '''
     Gets and returns the core's (or average CPU's if no core is specified)
     current frequency.
     '''
-    return get_xxx_freq(core, cur_freq_path)
+    CUR_FREQ_PATH = "scaling_cur_freq"
+    return get_xxx_freq(core, CUR_FREQ_PATH)
+
 
 def get_max_freq(core):
     '''
     Gets and returns the core's (or average CPU's if no core is specified)
     maximum frequency.
     '''
-    return get_xxx_freq(core, max_freq_path)
+    MAX_FREQ_PATH = "cpuinfo_max_freq"
+    return get_xxx_freq(core, MAX_FREQ_PATH)
+
 
 def get_valid_cores():
     '''
     Returns a list of all valid core numbers as integers.
     '''
-    pattern = base_path + '[0-9]*'
-    regex_pattern = base_path + '(?P<number>[0-9]+)'
+    pattern = BASE_PATH + '[0-9]*'
+    regex_pattern = BASE_PATH + '(?P<number>[0-9]+)'
     cores = []
 
     paths = glob.glob(pattern)
@@ -111,18 +117,21 @@ def get_valid_cores():
     cores.sort()
     return cores
 
+
 def get_xxx_freq(core, file_name):
     '''
     Gets and returns the core's (or average CPU's if no core is specified)
     frequency from the specifed file.
     '''
-    if(core == ""): # Average all cores.
-        paths = glob.glob(base_path + "[0-9]*" + suffix_path + file_name)
+    SUFFIX_PATH = "/cpufreq/"
+    if(core == ""):  # Average all cores.
+        paths = glob.glob(BASE_PATH + "[0-9]*" + SUFFIX_PATH + file_name)
     else:
-        paths = [base_path + core + suffix_path + file_name]
+        paths = [BASE_PATH + core + SUFFIX_PATH + file_name]
 
     time_sum = sum([int(pathlib.Path(path).read_text()) for path in paths])
     return float(time_sum) / len(paths)
+
 
 def output(percentages):
     '''
@@ -132,6 +141,7 @@ def output(percentages):
             f'{percentages[0]:.3f}\t{percentages[1]:.3f}\t{percentages[2]:.3f}'
             f'\t{percentages[3]:.3f}\t{percentages[4]:.3f}'
     )
+
 
 def get_args():
     '''
@@ -159,8 +169,9 @@ def get_args():
 
     return parser.parse_args()
 
+
 def main():
-    ## Handle command-line arguments.
+    # Handle command-line arguments.
     args = get_args()
     core_num = '' if args.core is None else str(args.core)
     sample_time = args.period
@@ -181,8 +192,10 @@ def main():
     percentages = calc_utilization(data_2, data_1, normalized_freq)
     output(percentages)
 
+
 def run():
     if __name__ == '__main__':
         main()
+
 
 run()
