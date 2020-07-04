@@ -454,6 +454,7 @@ correction_shift={$correction_factor*atan($contrast*$center)}
 -name[-1] factor
 
 # Apply factor.
+-replace_nan[factor] 1
 -mul[orig] [factor]
 -remove[factor]
 
@@ -495,7 +496,7 @@ blue_factor={$blue_weight/$total_weight}
 #@gui Incremental Guided Filter: lawrence37_incremental_guided_filter, lawrence37_incremental_guided_filter_p(0)
 #@gui : Radius = float(5,0,100)
 #@gui : Radius increment factor = float(4,0.1,10)
-#@gui : Threshold = float(0.075,0,1)
+#@gui : Threshold = float(0.075,0,100)
 #@gui : Threshold increment factor = float(1.5,0.1,10)
 #@gui : Iterations = int(4,1,10)
 #@gui : sep = separator()
