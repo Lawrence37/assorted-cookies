@@ -10,7 +10,7 @@
 # License     : GNU GPLv3
 #               ( https://www.gnu.org/licenses/gpl.html )
 #
-# Copyright (C) 2018 Lawrence Lee
+# Copyright (C) 2018-2020 Lawrence Lee
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -362,4 +362,173 @@ endif
 -endlocal -done
 -return
 
+
+# ------------------------------------------------------------------------------
+
+#@gui Contrast : lawrence37_contrast, lawrence37_contrast_p
+#@gui : Contrast = float(5,0.1,10)
+#@gui : Contrast center = float(0.5, 0, 1)
+#@gui : Red weight = float(1, 0.2, 5)
+#@gui : Green weight = float(1, 0.2, 5)
+#@gui : Blue weight = float(1, 0.2, 5)
+#@gui : Show curve = bool(1)
+
+lawrence37_contrast_p:
+
+# Variables.
+contrast=$1
+center=$2
+red_weight=$3
+green_weight=$4
+blue_weight=$5
+show_curve=$-1
+
+# Apply contrast.
+-name[-1] orig
++lawrence37_contrast ${1--2}
+-name[-1] final
+
+# Overlay curve image.
+if {$show_curve}
+  # Make graph half size of shortest dimension.
+  graph_size={0.5*min({orig,w},{orig,h})}
+
+  # Obtain histogram of original image's intensity.
+  +lawrence37_intensity[orig] $red_weight,$green_weight,$blue_weight
+  -name[-1] graph
+  -display_histogram[graph] $graph_size,$graph_size,255,0,255,0
+
+  # Make histogram half opacity.
+  -to_rgba[graph]
+  -apply_channels[graph] "mul 0.5",1
+
+  # Calculate curve function.
+  correction_factor={1/(atan($contrast*(1-$center))+atan($contrast*$center))}
+  correction_shift={$correction_factor*atan($contrast*$center)}
+  -graph[graph] '$correction_factor*atan($contrast*(x-$center))+$correction_shift',100,1,0,0,1,1,0,1,255
+
+  # Overlay graph on final image.
+  -crop[graph] 0,{{graph,h}-{orig,h}},{orig,w},100%
+  -blend[final] [graph],alpha
+  -remove[graph]
+endif
+
+-remove[orig]
+-return
+
+
+lawrence37_contrast:
+
+-repeat $! -local[$>]
+
+-name[0] orig
+
+# Variables
+contrast=$1
+center=$2
+red_weight=$3
+green_weight=$4
+blue_weight=$5
+
+# Obtain intensity.
++lawrence37_intensity[orig] $red_weight,$green_weight,$blue_weight
+
+# Name before and after intensities denominator and numerator.
+-name[-1] denom
+-div[denom] 255
+[denom]
+-name[-1] numer
+
+# Apply contrast to numer.
+-sub[numer] $center
+-mul[numer] $contrast
+-atan[numer]
+correction_factor={1/(atan($contrast*(1-$center))+atan($contrast*$center))}
+correction_shift={$correction_factor*atan($contrast*$center)}
+-mul[numer] $correction_factor
+-add[numer] $correction_shift
+
+# Calculate intensity scale factors.
+-div[numer] [denom]
+-remove[denom]
+-name[-1] factor
+
+# Apply factor.
+-mul[orig] [factor]
+-remove[factor]
+
+-endlocal -done
+-return
+
+lawrence37_intensity:
+
+-name[0] orig
+
+# Variables.
+red_weight=$1
+green_weight=$2
+blue_weight=$3
+
+total_weight={$red_weight+$green_weight+$blue_weight}
+red_factor={$red_weight/$total_weight}
+green_factor={$green_weight/$total_weight}
+blue_factor={$blue_weight/$total_weight}
+
+# Combine color channels.
++channels[orig] 0
+-name[-1] red
++channels[orig] 1
+-name[-1] green
++channels[orig] 2
+-name[-1] blue
+-mul[red] $red_factor
+-mul[green] $green_factor
+-mul[blue] $blue_factor
+-add[red] [green]
+-name[red] intensity
+-remove[green]
+-add[intensity] [blue]
+-remove[blue,orig]
+
+# ------------------------------------------------------------------------------
+
+#@gui Incremental Guided Filter: lawrence37_incremental_guided_filter, lawrence37_incremental_guided_filter_p(0)
+#@gui : Radius = float(5,0,100)
+#@gui : Radius increment factor = float(4,0.1,10)
+#@gui : Threshold = float(0.075,0,1)
+#@gui : Threshold increment factor = float(1.5,0.1,10)
+#@gui : Iterations = int(4,1,10)
+#@gui : sep = separator()
+#@gui : Preview type = choice("Full","Forward horizontal","Forward vertical","Backward horizontal","Backward vertical","Duplicate top","Duplicate left",Duplicate bottom","Duplicate right","Duplicate horizontal","Duplicate vertical","Checkered","Checkered inverse")
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : Incremental guided filter as described in http://photoflowblog.blogspot.com/2019/04/new-shadowshighlights-and-tone-mapping.html
+#@gui : "}
+
+lawrence37_incremental_guided_filter_p:
+-gui_split_preview "-lawrence37_incremental_guided_filter ${1--2}",$-1
+
+
+lawrence37_incremental_guided_filter:
+
+# Variables.
+radius=$1
+radius_factor=$2
+threshold=$3
+threshold_factor=$4
+iterations=$5
+
+-repeat $! -local[$>]
+
+i=0
+for {$i<$iterations}
+exponent={$iterations-1-$i}
+cur_radius={$radius/($radius_factor^$exponent)}
+cur_threshold={$threshold/($threshold_factor^$exponent)}
+-guided $cur_radius,$cur_threshold
+i={$i+1}
+done
+
+-endlocal -done
+-return
 
