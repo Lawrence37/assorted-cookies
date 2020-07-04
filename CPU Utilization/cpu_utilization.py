@@ -40,15 +40,19 @@ cur_freq_path = "scaling_cur_freq"
 max_freq_path = "cpuinfo_max_freq"
 
 
-# Calculates and returns the average of two frequencies, normalized to the
-# core's maximum frequency.
 def calc_avg_freq(a, b, core):
+    '''
+    Calculates and returns the average of two frequencies, normalized to the
+    core's maximum frequency.
+    '''
     return (a + b) / get_max_freq(core) / 2
 
-# Based on the initial and final CPU times and the average normalized frequency,
-# calculates and returns the core/CPU utilization, as percentages, categorized
-# by user, nice, system, idle, and wait.
 def calc_utilization(final, initial, freq):
+    '''
+    Based on the initial and final CPU times and the average normalized
+    frequency, calculates and returns the core/CPU utilization, as percentages,
+    categorized by user, nice, system, idle, and wait.
+    '''
     deltas = list(map(lambda f, i: f - i, final, initial))
     total_time = sum(deltas)
     percentages = []
@@ -62,9 +66,11 @@ def calc_utilization(final, initial, freq):
 
     return list(map(lambda x: 100 * x, percentages))
 
-# Gets and returns the CPU times since boot categorized by user, nice, system,
-# idle, and wait.
 def get_cpu_times(core):
+    '''
+    Gets and returns the CPU times since boot categorized by user, nice,
+    system, idle, and wait.
+    '''
     times_str = ""
     pattern = "cpu" + core
 
@@ -76,19 +82,25 @@ def get_cpu_times(core):
 
     return [float(x) for x in times_str.split()[1:6]]
 
-# Gets and returns the core's (or average CPU's if no core is specified) current
-# frequency.
 def get_cur_freq(core):
+    '''
+    Gets and returns the core's (or average CPU's if no core is specified)
+    current frequency.
+    '''
     return get_xxx_freq(core, cur_freq_path)
 
-# Gets and returns the core's (or average CPU's if no core is specified) maximum
-# frequency.
 def get_max_freq(core):
+    '''
+    Gets and returns the core's (or average CPU's if no core is specified)
+    maximum frequency.
+    '''
     return get_xxx_freq(core, max_freq_path)
 
-# Gets and returns the core's (or average CPU's if no core is specified)
-# frequency from the specifed file.
 def get_xxx_freq(core, file_name):
+    '''
+    Gets and returns the core's (or average CPU's if no core is specified)
+    frequency from the specifed file.
+    '''
     if(core == ""): # Average all cores.
         paths = glob.glob(base_path + "[0-9]*" + suffix_path + file_name)
         sum = 0
@@ -101,14 +113,18 @@ def get_xxx_freq(core, file_name):
         with open(path, 'r') as file_in:
             return int(file_in.read())
 
-# Prints the output of the program.
 def output(percentages):
+    '''
+    Prints the output of the program.
+    '''
     print("%.3f\t%.3f\t%.3f\t%.3f\t%.3f" % (percentages[0], percentages[1],\
             percentages[2], percentages[3], percentages[4]))
 
-# Gets and returns the core number specified as the second command-line
-# argument.
 def parse_core_num():
+    '''
+    Gets and returns the core number specified as the second command-line
+    argument.
+    '''
     if(len(sys.argv) == 3):
         if(os.path.isdir(base_path + sys.argv[2] + suffix_path)):
             return sys.argv[2]
@@ -118,16 +134,21 @@ def parse_core_num():
     else:
         return ""
 
-# Gets and returns the sample time specified as the first command-line argument.
 def parse_sample_time():
+    '''
+    Gets and returns the sample time specified as the first command-line
+    argument.
+    '''
     if(float(sys.argv[1]) >= 0):
         return float(sys.argv[1])
     else:
         print("Invalid sample time.")
         exit(1)
 
-# Prints usage information for this program.
 def print_help():
+    '''
+    Prints usage information for this program.
+    '''
     print("Prints the core/CPU's user, nice, system, idle, and wait loads as\
             percentages of the total core/CPU capacity.")
     print("Usage: " + sys.argv[0] + " <sample_time> [<core_number>]")
@@ -137,8 +158,10 @@ def print_help():
     print("If the core number is not specifed, an average of all cores is\
             used.")
 
-# Validates the number of command-line arguments.
 def validate_args():
+    '''
+    Validates the number of command-line arguments.
+    '''
     if(len(sys.argv) == 1):
         print_help()
         exit(0)
