@@ -23,14 +23,13 @@ Prints the (near) instantaneous core/CPU utilization as percentages of user,
 nice, system, idle, and wait loads. Utilization is the percentage of the core or
 cpu's maximum processing capacity given the number of active cores and maximum
 set frequency.
-
-Please don't judge my style. I don't usually program in Python.
 '''
 
 
 import argparse
 import glob     # glob(string)
 import os       # path.isdir(string)
+import pathlib  # Path
 import re       # match(string, string)
 import sys      # argv
 import time     # sleep(float)
@@ -55,18 +54,17 @@ def calc_utilization(final, initial, freq):
     frequency, calculates and returns the core/CPU utilization, as percentages,
     categorized by user, nice, system, idle, and wait.
     '''
-    deltas = list(map(lambda f, i: f - i, final, initial))
+    deltas = [f - i for f, i in zip(final, initial)]
     total_time = sum(deltas)
     percentages = []
 
     if(total_time > 0):
-        percentages = list(map(lambda x: x / total_time * freq, deltas))
-        percentages[3] = 1 - percentages[0] - percentages[1] -\
-                percentages[2] - percentages[4] # CPU idle.
+        percentages = [100 * x / total_time * freq for x in deltas]
+        percentages[3] += 100 - sum(percentages) # CPU idle.
     else:
-        percentages = [0, 0, 0, 1, 0]
+        percentages = [0.0, 0.0, 0.0, 100.0, 0.0]
 
-    return list(map(lambda x: 100 * x, percentages))
+    return percentages
 
 def get_cpu_times(core):
     '''
@@ -122,22 +120,20 @@ def get_xxx_freq(core, file_name):
     '''
     if(core == ""): # Average all cores.
         paths = glob.glob(base_path + "[0-9]*" + suffix_path + file_name)
-        sum = 0
-        for path in paths:
-            with open(path, 'r') as file_in:
-                sum += int(file_in.read())
-        return float(sum) / len(paths)
     else:
-        path = base_path + core + suffix_path + file_name
-        with open(path, 'r') as file_in:
-            return int(file_in.read())
+        paths = [base_path + core + suffix_path + file_name]
+
+    time_sum = sum([int(pathlib.Path(path).read_text()) for path in paths])
+    return float(time_sum) / len(paths)
 
 def output(percentages):
     '''
     Prints the output of the program.
     '''
-    print("%.3f\t%.3f\t%.3f\t%.3f\t%.3f" % (percentages[0], percentages[1],\
-            percentages[2], percentages[3], percentages[4]))
+    print(
+            f'{percentages[0]:.3f}\t{percentages[1]:.3f}\t{percentages[2]:.3f}'
+            f'\t{percentages[3]:.3f}\t{percentages[4]:.3f}'
+    )
 
 def parse_core_num():
     '''
