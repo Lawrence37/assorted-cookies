@@ -28,10 +28,8 @@ set frequency.
 
 import argparse
 import glob     # glob(string)
-import os       # path.isdir(string)
 import pathlib  # Path
 import re       # match(string, string)
-import sys      # argv
 import time     # sleep(float)
 
 
@@ -134,55 +132,6 @@ def output(percentages):
             f'{percentages[0]:.3f}\t{percentages[1]:.3f}\t{percentages[2]:.3f}'
             f'\t{percentages[3]:.3f}\t{percentages[4]:.3f}'
     )
-
-def parse_core_num():
-    '''
-    Gets and returns the core number specified as the second command-line
-    argument.
-    '''
-    if(len(sys.argv) == 3):
-        if(os.path.isdir(base_path + sys.argv[2] + suffix_path)):
-            return sys.argv[2]
-        else:
-            print("Invalid core number.")
-            exit(1)
-    else:
-        return ""
-
-def parse_sample_time():
-    '''
-    Gets and returns the sample time specified as the first command-line
-    argument.
-    '''
-    if(float(sys.argv[1]) >= 0):
-        return float(sys.argv[1])
-    else:
-        print("Invalid sample time.")
-        exit(1)
-
-def print_help():
-    '''
-    Prints usage information for this program.
-    '''
-    print("Prints the core/CPU's user, nice, system, idle, and wait loads as\
-            percentages of the total core/CPU capacity.")
-    print("Usage: " + sys.argv[0] + " <sample_time> [<core_number>]")
-    print("Sample time is the period of time to sample the CPU time. Small\
-            values give imprecise results. Large values may not be accurate\
-            because the frequency is sampled only at the start and end.")
-    print("If the core number is not specifed, an average of all cores is\
-            used.")
-
-def validate_args():
-    '''
-    Validates the number of command-line arguments.
-    '''
-    if(len(sys.argv) == 1):
-        print_help()
-        exit(0)
-    elif(len(sys.argv) > 3):
-        print_help()
-        exit(1)
 
 def get_args():
     '''
