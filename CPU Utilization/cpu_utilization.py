@@ -28,6 +28,7 @@ Please don't judge my style. I don't usually program in Python.
 '''
 
 
+import argparse
 import glob     # glob(string)
 import os       # path.isdir(string)
 import re       # match(string, string)
@@ -96,6 +97,23 @@ def get_max_freq(core):
     maximum frequency.
     '''
     return get_xxx_freq(core, max_freq_path)
+
+def get_valid_cores():
+    '''
+    Returns a list of all valid core numbers as integers.
+    '''
+    pattern = base_path + '[0-9]*'
+    regex_pattern = base_path + '(?P<number>[0-9]+)'
+    cores = []
+
+    paths = glob.glob(pattern)
+    for path in paths:
+        match = re.match(regex_pattern, path).group('number')
+        if match is not None:
+            cores.append(int(match))
+
+    cores.sort()
+    return cores
 
 def get_xxx_freq(core, file_name):
     '''
@@ -170,11 +188,37 @@ def validate_args():
         print_help()
         exit(1)
 
+def get_args():
+    '''
+    Returns the parsed command line arguments.
+    '''
+    parser = argparse.ArgumentParser(
+            description='Large values may not be accurate because the '
+            'frequency is sampled only at the start and end.'
+    )
+    valid_cores = get_valid_cores()
+
+    parser.add_argument(
+            'period',
+            type=float,
+            help='The period of time to sample the CPU time. Small values '
+            'give imprecise results.'
+    )
+    parser.add_argument(
+            '-c',
+            '--core',
+            type=int,
+            choices=valid_cores,
+            help='Number of the core.'
+    )
+
+    return parser.parse_args()
+
 def main():
-    # Handle command-line arguments.
-    validate_args()
-    core_num = parse_core_num()
-    sample_time = parse_sample_time()
+    ## Handle command-line arguments.
+    args = get_args()
+    core_num = '' if args.core is None else str(args.core)
+    sample_time = args.period
 
     # Sample initial conditions.
     data_1 = get_cpu_times(core_num)
