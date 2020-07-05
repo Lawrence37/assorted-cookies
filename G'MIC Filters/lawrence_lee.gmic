@@ -533,3 +533,47 @@ done
 -endlocal -done
 -return
 
+# ------------------------------------------------------------------------------
+
+#@gui Soft focus: lawrence37_soft_focus, lawrence37_soft_focus_p(1)
+#@gui : note = note{"
+#@gui : Simulates the soft focus lens effect.
+#@gui : "}
+#@gui : sep = separator()
+#@gui : Amount = float(50, 0, 100)
+#@gui : Dispersion = float(2, 0, 25)
+#@gui : Blur = float(0, 0, 1)
+#@gui : Gamma = float(1, 0.1, 10)
+#@gui : sep = separator()
+#@gui : Preview type = choice("Full","Forward horizontal","Forward vertical","Backward horizontal","Backward vertical","Duplicate top","Duplicate left",Duplicate bottom","Duplicate right","Duplicate horizontal","Duplicate vertical","Checkered","Checkered inverse")
+
+lawrence37_soft_focus_p:
+-gui_split_preview "-lawrence37_soft_focus ${1--2}",$-1
+-return
+
+lawrence37_soft_focus:
+amount=$1
+dispersion=$2
+blur=$3
+gamma=$4
+
+alpha={$amount/100}
+
+-repeat $! -local[$>]
+
+diag={sqrt(h*h+w*w)/2}
+if {$gamma!=1}
+  -apply_gamma {1/$gamma}
+endif
+radius={$dispersion*$diag/100}
++blur $radius
+if $blur
+  -blur[-2] $blur
+endif
+-blend alpha,$alpha
+if {$gamma!=1}
+  -apply_gamma $gamma
+endif
+
+-endlocal -done
+-return
