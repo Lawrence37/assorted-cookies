@@ -535,6 +535,271 @@ done
 
 # ------------------------------------------------------------------------------
 
+#@gui Contrast Transfer: lawrence37_contrast_transfer_gui, lawrence37_contrast_transfer_gui
+#@gui : note = note{"
+#@gui : Transfers local contrast from the bottom layer (source) to the top layer
+#@gui : (target).
+#@gui : <br/>
+#@gui : "}
+#@gui : sep = separator()
+#@gui : Strength = float(100,0,100)
+#@gui : sep = separator()
+#@gui : note = note{"<b>Source Image</b>"}
+#@gui : Tameness = float(0,-4,4)
+#@gui : Tameness Threshold = float(0,-6,6)
+#@gui : Tone Recovery = bool(0)
+#@gui : Detail Amplification = float(0,-10,10)
+#@gui : sep = separator()
+#@gui : note = note{"<b>Transfer</b>"}
+#@gui : Targeting = float(7,-5,20)
+#@gui : Falloff = float(0,0,200)
+#@gui : Epsilon = float(1,0,100)
+#@gui : sep = separator()
+#@gui : note = note{"<b>Quality</b>"}
+#@gui : Detail Extraction = int(10,1,100)
+#@gui : Iteration step size = float(2,1.125,8)
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : <br/>
+#@gui : <b>How to use</b>
+#@gui : <br/><br/>
+#@gui : You can adjust the tameness and detail amplification of the
+#@gui : source image. Tameness reduces strong contrast while preserving subtle
+#@gui : contrast. The threshold defines how the strong and subtle contrast are
+#@gui : separated. A high threshold places the separator higher, which means
+#@gui : more parts of the image are considered to have subtle contrast. These
+#@gui : areas are preserved, so the tameness effect is weaker. Tone recovery
+#@gui : restores global contrast removed by tameness. The tameness tools are for
+#@gui : advanced users. Other users may prefer the detail amplification. It
+#@gui : strengthens the contrast transferred to the target image.
+#@gui : <br/><br/>
+#@gui : Targeting reduces the strength of the contrast transfer in places where
+#@gui : the contrast of the source image is high. Falloff reduces the transfer
+#@gui : of coarse contrast while leaving fine contrast alone. Epsilon reduces
+#@gui : contrast transfer from dark regions of the source image. This is an
+#@gui : advanced setting and should be left as a small non-zero number.
+#@gui : <br/><br/>
+#@gui : Contrast is transferred for several levels of coarseness beginning with
+#@gui : pixel-level fineness up to a coarseness about the size of the entire
+#@gui : image. Detail extraction quality controls how well the contrast is
+#@gui : extracted for a given level of coarseness. A low value still produces
+#@gui : good results in most cases. A high value increases processing time.
+#@gui : The iteration step size affects the number of coarseness levels. Large
+#@gui : values reduce the number of levels and the quality.
+#@gui : <br/><br/>
+#@gui : <b>Performance</b>
+#@gui : <br/><br/>
+#@gui : Using tameness, tone recovery, detail amplification, targeting, and
+#@gui : falloff add work for the computer. Setting them to zero disables them
+#@gui : and improves performance. Higher detail extraction quality decreases
+#@gui : performance. Higher iteration step sizes increases performance.
+#@gui : "}
+
+
+lawrence37_contrast_transfer_gui:
+-if {$!!=2}
+  -gui_print_preview "Requires exactly two input layers."
+  -return
+-endif
+strength={$1/100}
+tameness=$2
+tame_threshold=$3
+tameness_correction=$4
+amp={$5/10}
+targeting=$6
+falloff={$7/100}
+epsilon={255*$8/100}
+extraction_quality=$9
+step_size=$10
+-lawrence37_contrast_transfer[-2] [-1],$strength,$tameness,$tame_threshold,$tameness_correction,$amp,$targeting,$falloff,$epsilon,$extraction_quality,$step_size
+-keep[-2]
+-return
+
+
+lawrence37_contrast_transfer:
+
+# Variables.
+strength=$2
+tameness={2^$3}
+tame_threshold={2^(-$4)}
+tameness_correction=$5
+amplification={10^$6}
+targeting=$7
+falloff=$8
+epsilon=$9
+extraction_quality=$10
+step_size=$11
+
+steps_per_level={1/log2($step_size)}
+-pass$1 -repeat {$!-1} -local[$>,-1]
+
+-name[-2] target
+-name[-1] source
+
+diameter={sqrt((w#$target)^2+(h#$target)^2)}
+max_level={ceil(log2($diameter))+1}
+start_iteration={ceil($steps_per_level*($max_level-1))+1}
+end_iteration=1
+
+# Get luminance of source and target images.
++luminance[target]
+-name[-1] target_l
++luminance[source]
+-name[-1] source_l
+
+scale_comp={2^($max_level-1)/$diameter}
+base_diameter={$scale_comp*$diameter}
+
+# Create multi-resolution pyramid.
+pyramid_height={max(1,$max_level-ceil(log2($extraction_quality))-1)}
+level=1
+for $level<$pyramid_height
+  scale_factor={$scale_comp*2^(-$level)}
+  +resize[-2] {w#$target_l*$scale_factor},{h#$target_l*$scale_factor},100%,100%,2
+  +resize[-2] {w#$target_l*$scale_factor},{h#$target_l*$scale_factor},100%,100%,2
+  level={$level+1}
+done
+cur_diameter={sqrt((w#-1)^2+(h#-1)^2)}
+scale={$base_diameter/$cur_diameter}
+
+# Highest level.
++blur[-2] {($step_size^$start_iteration)/$scale}
+-name[-1] c_2
++blur[-2] {($step_size^$start_iteration)/$scale}
+-name[-1] o_2
+
+# Start with no details.
+-input 100%,100%,1,1,1
+-name[-1] detail
+-move[detail] {$source+1}
+
+i=$start_iteration
+for $i>=$end_iteration
+
+  blur_radius={$step_size^($i-1)}
+  if ($blur_radius/$scale<$extraction_quality)&&($o_2>6)
+    # Switch to higher resolution.
+    do
+      remove[-3,-4]
+      cur_diameter={sqrt((w#-3)^2+(h#-3)^2)}
+      scale={$base_diameter/$cur_diameter}
+    while ($blur_radius/$scale<$extraction_quality)&&($o_2>6)
+    -resize[detail,c_2,o_2] {w#-3},{h#-3},100%,100%,3
+  endif
+
+  if $i!=$end_iteration
+    # Obtain lower level's blurred images.
+    +blur[-4] {$step_size^($i-1)/$scale}
+    -name[-1] c_1
+    +blur[-4] {$step_size^($i-1)/$scale}
+    -name[-1] o_1
+  else
+    # Lowest level.
+    -name[target_l] c_1
+    -name[source_l] o_1
+  endif
+
+  # Suppress details in areas of high local contrast.
+  if {$targeting!=0} # Optimization.
+    +add[o_1] $epsilon
+    -log[-1]
+    -gradient_norm[-1]
+    -name[-1] grad_norm
+    #-replace_nan[grad_norm] 1000000
+    if {$targeting>0}
+      targeting_factor=$targeting
+    else
+      targeting_factor={1/abs($targeting)}
+    endif
+    level_targeting={-$targeting_factor*$step_size^(($i-1))/$scale}
+    -mul[grad_norm] $level_targeting
+    -blur[grad_norm] {1+$step_size^($i-1)/$scale}
+    -exp[grad_norm]
+    -name[grad_norm] targeting_mask
+    if {$targeting<0}
+      -mul[targeting_mask] -1
+      -add[targeting_mask] 1
+    endif
+  endif
+
+  # Extract details for this level.
+  +div[c_1] [c_2]
+  -name[-1] c_d
+  +div[o_1] [o_2]
+  -name[-1] o_d
+  -remove[c_2,o_2]
+  if {$tameness!=1} # Optimization.
+    # x^(1/(t+$tameness(1-t))), t=e^(-|ln(x)|)
+    +log[o_d]
+    -abs[-1]
+    -mul[-1] {-$steps_per_level*$tame_threshold}
+    -exp[-1]
+    -add[-1] '$tameness*(1-i)'
+    -pow[-1] -1
+    -pow[o_d] [-1]
+    -remove[-1]
+  endif
+  if {$amplification!=0}
+    -pow[o_d] $amplification
+  endif
+  -div[o_d] [c_d]
+  -name[o_d] partial_detail
+  -remove[c_d]
+  -replace_nan[partial_detail] 1
+
+  # Apply this level's details to the cumulative details.
+  if {$targeting!=0}
+    -pow[partial_detail] [targeting_mask]
+    -remove[targeting_mask]
+  endif
+  if {$falloff!=0} # Optimization.
+    -pow[partial_detail] {$step_size^(-$falloff*$step_size^($i-$start_iteration))}
+  endif
+  -mul[detail] [partial_detail]
+  -remove[partial_detail]
+
+  -name[c_1] c_2
+  -name[o_1] o_2
+
+  i={$i-1}
+done
+
+-name[c_2] target_l
+-name[o_2] source_l
+
+# Tameness correction.
+if {$tameness_correction&&$tameness!=1}
+  +blur[source_l] {$step_size^$start_iteration}
+  -name[-1] source_blur
+  +div[source_l] [source_blur]
+  -name[-1] correction
+  -remove[source_blur]
+  -replace_nan[correction] 1
+  -pow[correction] {1-1/$tameness}
+  -replace_inf[correction] 1
+  -mul[detail] [correction]
+  -remove[correction]
+endif
+
+# Apply details to target image.
+-pow[detail] $strength
+if {s#$target==4} # Has alpha channel.
+  +channels[target] 3
+  -name[-1] alpha
+  -remove_opacity[target]
+  -mul[target] [detail]
+  -append[target] [alpha],c
+else
+  -mul[target] [detail]
+endif
+
+-keep[target]
+
+-endlocal -done
+-return
+
+# ------------------------------------------------------------------------------
+
 #@gui Soft focus: lawrence37_soft_focus, lawrence37_soft_focus_p(1)
 #@gui : note = note{"
 #@gui : Simulates the soft focus lens effect.
