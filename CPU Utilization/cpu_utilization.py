@@ -6,6 +6,7 @@ import glob     # glob(string)
 import pathlib  # Path
 import re       # match(string, string)
 import time     # sleep(float)
+import typing
 
 
 '''
@@ -38,7 +39,68 @@ maximum set frequency.
 BASE_PATH = '/sys/devices/system/cpu/cpu'
 
 
-def calc_avg_freq(a, b, core):
+class CpuTimes:
+    '''
+    Convenience class which holds CPU times.
+    '''
+
+    def __init__(self, times_str: str = None):
+        if times_str is None:
+            self.user, self.nice, self.system, self.idle, self.wait = [0] * 5
+            return
+
+        self.user, self.nice, self.system, self.idle, self.wait = [
+                int(x) for x in times_str.split()[1:6]
+        ]
+
+    def sum(self) -> int:
+        ''' Returns the total CPU time. '''
+        return self.user + self.nice + self.system + self.idle + self.wait
+
+    def time_since(self, initial: 'CpuTimes') -> 'CpuTimes':
+        '''
+        Returns the change in CPU times from the ``initial`` times to these
+        times.
+        '''
+        delta = CpuTimes()
+
+        delta.user = self.user - initial.user
+        delta.nice = self.nice - initial.nice
+        delta.system = self.system - initial.system
+        delta.idle = self.idle - initial.idle
+        delta.wait = self.wait - initial.wait
+
+        return delta
+
+
+class CpuPercents:
+    '''
+    Convenience class which holds CPU utilization percentages.
+    '''
+
+    def __init__(self, cpu_times: CpuTimes, freq: float):
+        '''
+        Convert CPU times and the average normalized frequency to percentages.
+        '''
+        time_sum = cpu_times.sum()
+
+        if time_sum == 0:
+            self.user, self.nice, self.system, self.wait = [0.0] * 4
+            return
+
+        time_factor = 100 * freq / cpu_times.sum()
+
+        self.user = time_factor * cpu_times.user
+        self.nice = time_factor * cpu_times.nice
+        self.system = time_factor * cpu_times.system
+        self.wait = time_factor * cpu_times.wait
+
+    @property
+    def idle(self) -> float:
+        return 100 - self.user - self.nice - self.system - self.wait
+
+
+def calc_avg_freq(a: float, b: float, core: str) -> float:
     '''
     Calculates and returns the average of two frequencies, normalized to the
     core's maximum frequency.
@@ -46,26 +108,18 @@ def calc_avg_freq(a, b, core):
     return (a + b) / get_max_freq(core) / 2
 
 
-def calc_utilization(final, initial, freq):
+def calc_utilization(
+        final: CpuTimes, initial: CpuTimes, freq: float
+) -> CpuPercents:
     '''
     Based on the initial and final CPU times and the average normalized
     frequency, calculates and returns the core/CPU utilization, as percentages,
     categorized by user, nice, system, idle, and wait.
     '''
-    deltas = [f - i for f, i in zip(final, initial)]
-    total_time = sum(deltas)
-    percentages = []
-
-    if(total_time > 0):
-        percentages = [100 * x / total_time * freq for x in deltas]
-        percentages[3] += 100 - sum(percentages)  # CPU idle.
-    else:
-        percentages = [0.0, 0.0, 0.0, 100.0, 0.0]
-
-    return percentages
+    return CpuPercents(final.time_since(initial), freq)
 
 
-def get_cpu_times(core):
+def get_cpu_times(core: str) -> CpuTimes:
     '''
     Gets and returns the CPU times since boot categorized by user, nice,
     system, idle, and wait.
@@ -79,10 +133,10 @@ def get_cpu_times(core):
                 times_str = line
                 break
 
-    return [float(x) for x in times_str.split()[1:6]]
+    return CpuTimes(times_str)
 
 
-def get_cur_freq(core):
+def get_cur_freq(core: str) -> float:
     '''
     Gets and returns the core's (or average CPU's if no core is specified)
     current frequency.
@@ -91,7 +145,7 @@ def get_cur_freq(core):
     return get_xxx_freq(core, CUR_FREQ_PATH)
 
 
-def get_max_freq(core):
+def get_max_freq(core: str) -> float:
     '''
     Gets and returns the core's (or average CPU's if no core is specified)
     maximum frequency.
@@ -100,7 +154,7 @@ def get_max_freq(core):
     return get_xxx_freq(core, MAX_FREQ_PATH)
 
 
-def get_valid_cores():
+def get_valid_cores() -> typing.List[int]:
     '''
     Returns a list of all valid core numbers as integers.
     '''
@@ -118,7 +172,7 @@ def get_valid_cores():
     return cores
 
 
-def get_xxx_freq(core, file_name):
+def get_xxx_freq(core: str, file_name: str) -> float:
     '''
     Gets and returns the core's (or average CPU's if no core is specified)
     frequency from the specifed file.
@@ -133,14 +187,17 @@ def get_xxx_freq(core, file_name):
     return float(time_sum) / len(paths)
 
 
-def output(percentages):
+def output(percentages: CpuPercents):
     '''
     Prints the output of the program.
     '''
-    print(
-            f'{percentages[0]:.3f}\t{percentages[1]:.3f}\t{percentages[2]:.3f}'
-            f'\t{percentages[3]:.3f}\t{percentages[4]:.3f}'
-    )
+    print('\t'.join([
+            f'{percentages.user:.3f}',
+            f'{percentages.nice:.3f}',
+            f'{percentages.system:.3f}',
+            f'{percentages.idle:.3f}',
+            f'{percentages.wait:.3f}',
+    ]))
 
 
 def get_args():
