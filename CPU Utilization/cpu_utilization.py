@@ -31,7 +31,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 '''
 Prints the (near) instantaneous core/CPU utilization as percentages of user,
 nice, system, idle, and wait loads. Utilization is the percentage of the core
-or cpu's maximum processing capacity given the number of active cores and
+or CPU's maximum processing capacity given the number of active cores and
 maximum set frequency.
 '''
 
@@ -205,8 +205,11 @@ def get_args():
     Returns the parsed command line arguments.
     '''
     parser = argparse.ArgumentParser(
-            description='Large values may not be accurate because the '
-            'frequency is sampled only at the start and end.'
+            description='Prints the (near) instantaneous core/CPU utilization '
+            'as percentages of user, nice, system, idle, and wait loads. '
+            "Utilization is the percentage of the core or CPU's maximum "
+            'processing capacity given the number of active cores and maximum '
+            'set frequency.'
     )
     valid_cores = get_valid_cores()
 
@@ -214,7 +217,8 @@ def get_args():
             'period',
             type=float,
             help='The period of time to sample the CPU time. Small values '
-            'give imprecise results.'
+            'give imprecise results. Large values may not be accurate because '
+            'the frequency is sampled only at the start and end.'
     )
     parser.add_argument(
             '-c',
