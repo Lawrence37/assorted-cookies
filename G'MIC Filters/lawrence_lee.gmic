@@ -1444,6 +1444,240 @@ endif
 -return
 
 
+#-------------------------------------------------------------------------------
+
+#@gui Retina Highlight Compression : lawrence37_highlight_compress_retina, lawrence37_highlight_compress_retina_p
+#@gui : White level = float(1,0.1,10)
+#@gui : Preserve luminance = bool(0)
+#@gui : Pivot = float(50,0,100)
+#@gui : Color space = choice("LMS Retina","XYZ","Linear RGB")
+#@gui : sep = separator()
+#@gui : Show clipping = bool(0)
+#@gui : sep = separator()
+#@gui : Preview type = choice("Full","Forward horizontal","Forward vertical","Backward horizontal","Backward vertical","Duplicate top","Duplicate left",Duplicate bottom","Duplicate right","Duplicate horizontal","Duplicate vertical","Checkered","Checkered inverse")
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : Experimental highlight tone compression in LMS space. Each channel is
+#@gui : compressed using a negative exponential decay curve that approaches a
+#@gui : white level.
+#@gui : <br/><br/>
+#@gui : White level: Maximum value after the initial compression, with 1 being
+#@gui : 100%.
+#@gui : <br/>
+#@gui : Preserve luminance: If checked, the final image will have the same
+#@gui : luminance as the original. Only color will be affected.
+#@gui : <br/>
+#@gui : Pivot: Color value, as a percentage, which will remain unchanged after
+#@gui : applying gain.
+#@gui : <br/>
+#@gui : Color space: The color space in which to perform the compression in.
+#@gui : <br/>
+#@gui : Show clipping: Indicate which pixels are fully saturated.
+#@gui : "}
+
+lawrence37_highlight_compress_retina_p:
+show_clipping=$-2
+if {$show_clipping}
+  -gui_split_preview "-lawrence37_highlight_compress_retina ${1--3} cut 0,255 replace 0,255 replace 255,0",$-1
+else
+  -gui_split_preview "-lawrence37_highlight_compress_retina ${1--3}",$-1
+endif
+-return
+
+lawrence37_highlight_compress_retina:
+white_level=$1
+preserve_luminance=$2
+pivot={$3/100}
+color_space=$4
+
+-repeat $! -local[$>]
+
+-name[-1] img
+
+has_alpha={s==4}
+
+if {$has_alpha}
+  # Save alpha channel.
+  +channels[img] 3
+  -name[-1] alpha_channel
+  -to_rgb[img]
+endif
+
+-srgb2rgb_unbounded[img]
+
+if {$preserve_luminance}
+  # Save luminance.
+  +rgb2xyz[img]
+  -name[-1] orig_lumi
+  -channels[orig_lumi] 1
+endif
+
+# Convert to working color space.
+if {$color_space==0} # LMS.
+  -rgb2xyz[img]
+  -mix_rgb[img] 0.401288,0.650173,-0.051461,-0.250268,1.204414,0.045854,-0.002079,0.048952,0.953127
+elif {$color_space==1} # XYZ.
+  -rgb2xyz[img]
+elif {$color_space==2} # Linear RGB.
+  -mul[img] {1/255}
+endif
+
+# Apply tone curve.
+-mul[img] {-1/$white_level}
+-exp[img]
+-mul[img] -1
+-add[img] 1
+if {$pivot==0} # Avoid divide by zero.
+  -mul[img] $white_level
+else
+  -mul[img] {$pivot/(1-exp(-$pivot/$white_level))}
+endif
+
+# Convert back to original color space.
+if {$color_space==0} # LMS.
+  -mix_rgb[img] 1.862067855087233,-1.011254630531684,0.1491867754444517,0.3875265432361371,0.6214474419314753,-0.00897398516761252,-0.01584149884933386,-0.03412293802851556,1.049964436877849
+  -xyz2rgb_unbounded[img]
+elif {$color_space==1} # XYZ.
+  -xyz2rgb_unbounded[img]
+elif {$color_space==2} # Linear RGB.
+  -mul[img] 255
+endif
+
+if {$preserve_luminance}
+  # Divide the new luminance from the old and multiply to each channel.
+  +rgb2xyz[img]
+  -name[-1] new_lumi
+  -channels[new_lumi] 1
+  -div[orig_lumi] [new_lumi]
+  -name[orig_lumi] lumi_factor
+  -rm[new_lumi]
+  -replace_nan[lumi_factor] 1
+  -mul[img] [lumi_factor]
+  -rm[lumi_factor]
+endif
+
+-rgb2srgb_unbounded[img]
+
+if {$has_alpha}
+  # Restore the alpha channel.
+  -append[img] [alpha_channel],c
+endif
+
+-endlocal -done
+-return
+
+
+#-------------------------------------------------------------------------------
+
+#@gui Darken Highlight Compression : lawrence37_highlight_compress_to_black, lawrence37_highlight_compress_to_black_p
+#@gui : Brightness type = choice("Luminance", "Value")
+#@gui : Compression type = choice("Decay", "Soft")
+#@gui : Compression threshold = float(100,0,100)
+#@gui : White level = float(100,100,1000)
+#@gui : Clip = bool(1)
+#@gui : sep = separator()
+#@gui : Preview type = choice("Full","Forward horizontal","Forward vertical","Backward horizontal","Backward vertical","Duplicate top","Duplicate left",Duplicate bottom","Duplicate right","Duplicate horizontal","Duplicate vertical","Checkered","Checkered inverse")
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : Compresses highlights to a range of XYZ luminance or HSV values by
+#@gui : darkening highlights.
+#@gui : <br/><br/>
+#@gui : Brightness type: The metric to use for determining how bright a pixel
+#@gui : is.
+#@gui : <br/>
+#@gui : Compression type: The curve used for compression. "Decay" is a negative
+#@gui : exponential decay. "Soft" is a negative inverse.
+#@gui : <br/>
+#@gui : Compression threshold: Brightness level, as a percentage of white, after
+#@gui : which compression is applied.
+#@gui : <br/>
+#@gui : White level: The maximum final brightness level, as a percentage of
+#@gui : white.
+#@gui : <br/>
+#@gui : Clip: Whether or not to clip brightnesses that remain above 100% even
+#@gui : after compression is applied.
+#@gui : "}
+
+lawrence37_highlight_compress_to_black_p:
+brightness_type=$1
+compression_type=$2
+white_level={$3/100}
+threshold={$4/100}
+-gui_split_preview "-lawrence37_highlight_compress_to_black "$brightness_type","$compression_type","$white_level","$threshold",${5--2}",$-1
+-return
+
+lawrence37_highlight_compress_to_black:
+brightness_type=$1
+compression_type=$2
+threshold={255*$3}
+white_level={255*$4}
+clip=$5
+
+# Exponential decay compression function for values over the threshold is:
+# f(x) = w - re^[(t - x) / r] = w - e^[ln(r) + t/r - x/r],
+# where w is the white level, t is the threshold, and r is w - t.
+# Ratio (smooth) compression function is:
+# f(x) = l - r / [(x - t)/r + 1] = l - r^2 / [x - t + r]
+range={$white_level-$threshold}
+if {$range>0}
+  exp_shift={log($range)+$threshold/$range}
+  range_squared={$range*$range}
+  ratio_shift={$range-$threshold}
+endif
+
+-repeat $! -local[$>]
+
+-name[-1] img
+
+has_alpha={s==4}
+
+if {$has_alpha}
+  # Save alpha channel.
+  +channels[img] 3
+  -name[-1] alpha_channel
+  -to_rgb[img]
+endif
+
+-srgb2rgb_unbounded[img]
+
+if {$brightness_type==0}
+  +rgb_luminance[img]
+else
+  +compose_channels[img] max
+endif
+-name[-1] value
+
+# Calculate new value.
+if {$compression_type==1}
+  +fill[value] 'i<=$threshold?i:$white_level-$range_squared/(i+$ratio_shift)'
+else
+  +fill[value] 'i<=$threshold?i:$white_level-exp($exp_shift-i/$range)'
+endif
+-name[-1] new_value
+if {$clip}
+  -min[new_value] 255
+endif
+
+# Calculate darkening factor.
+-div[new_value] [value]
+-name[new_value] factor
+-remove[value]
+-replace_nan[factor] 1
+
+# Darken.
+-mul[img] [factor]
+-remove[factor]
+
+-rgb2srgb_unbounded[img]
+
+if {$has_alpha}
+  # Restore the alpha channel.
+  -append[img] [alpha_channel],c
+endif
+
+-endlocal -done
+
+
 # The following code is adapted from
 # https://raw.githubusercontent.com/dtschump/gmic/master/src/gmic_stdlib.gmic.
 # The licence information is included below.
