@@ -1164,6 +1164,95 @@ step_size=51.2
 -keep[final]
 
 
+#-------------------------------------------------------------------------------
+
+#@gui Highlight Control: lawrence37_highlight_control, lawrence37_highlight_control
+#@gui : note = note{"
+#@gui : Desaturates highlights to fit within a maximum value.
+#@gui : "}
+#@gui : sep = separator()
+
+lawrence37_highlight_control:
+
+-repeat $! -local[$>]
+
+-name[0] img
+
+# Convert to linear RGB.
+-srgb2rgb_unbounded[img]
+
+# Get each channel.
++split[img] c
+-name[-3] r_orig
+-name[-2] g_orig
+-name[-1] b_orig
+
+# Get luminance.
+-rgb2xyz[img]
+-name[img] luminance
+-channels[luminance] 1
+-mul[luminance] 255
+
+# Get the max RGB of the original and final image.
++max[r_orig,g_orig,b_orig]
+-name[-1] max_rgb
++min[max_rgb] 255
+-name[-1] max_rgb_clip
+
+# Max RGB minus the luminance.
+-sub[max_rgb] [luminance]
+-name[max_rgb] diff_orig
+
+# New max RGB minus the luminance.
+-sub[max_rgb_clip] [luminance]
+-name[max_rgb_clip] diff_new
+
+# Divide the new difference from the old one. This tells us the factor needed
+# to go from the old value to the new value, which is also the blend weight of
+# the old image.
+-div[diff_new] [diff_orig]
+-name[diff_new] rgb_weight
+-remove[diff_orig]
+-replace_nan[rgb_weight] 1
+-cut[rgb_weight] 0,1
+
+# Get the luminance weight, which is just 100% minus the old image weight.
++sub[rgb_weight] 1
+-name[-1] l_weight
+-mul[l_weight] -1
+
+# Add the luminance contribution to the new image.
+-mul[luminance] [l_weight]
+-name[luminance] l_term
+-remove[l_weight]
+
+# Add the R channel contribution to the new image.
+-mul[r_orig] [rgb_weight]
+-name[r_orig] r_new
+-add[r_new] [l_term]
+
+# Add the G channel contribution to the new image.
+-mul[g_orig] [rgb_weight]
+-name[g_orig] g_new
+-add[g_new] [l_term]
+
+# Add the B channel contribution to the new image.
+-mul[b_orig] [rgb_weight]
+-name[b_orig] b_new
+-add[b_new] [l_term]
+
+-remove[l_term,rgb_weight]
+
+# Combine the channels into a new image.
+-append[r_new,g_new,b_new] c
+-name[r_new] new
+
+# Convert back to sRGB.
+-rgb2srgb_unbounded[new]
+
+-endlocal -done
+
+
 # The following code is adapted from
 # https://raw.githubusercontent.com/dtschump/gmic/master/src/gmic_stdlib.gmic.
 # The licence information is included below.
