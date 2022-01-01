@@ -1091,6 +1091,79 @@ endif
 -return
 
 
+#-------------------------------------------------------------------------------
+
+#@gui Lab viewer: lawrence37_lab_viewer, lawrence37_lab_viewer
+#@gui : note = note{"
+#@gui : View the top of the CIELAB color space.
+#@gui : "}
+#@gui : sep = separator()
+#@gui : Size = int(200, 1, 1000)
+#@gui : Range (10^x) = float(2, 0, 4)
+#@gui : Epsilon = float(0.1, .01, 1)
+#@gui : sep = separator()
+#@gui : note = note {"
+#@gui : Size: Width and height in pixels.
+#@gui : <br/>
+#@gui : Range: The extent of a* and b*.
+#@gui : <br/>
+#@gui : Epsilon: Accuracy of L*.
+#@gui : "}
+
+lawrence37_lab_viewer:
+
+size=$1
+range={10^$2}
+epsilon=$3
+
+resolution={$size/$range/2}
+
+# Create L*, a*, and b* channels.
+rm
+$size,$size,1,1,[0]
+-name[-1] lab_l
+$size,$size,1,1,[x/$resolution-$range] # a*
+$size,$size,1,1,[$range-y/$resolution] # b*
+-append[-2] [-1],c
+rm[-1]
+-name[-1] lab_ab
+
+# Pseudo-binary search to find L*. Start with a reasonable step size and keep
+# adding to L* with successively smaller steps until we approach the correct L*.
+step_size=51.2
+-do
+  # For each pixel, keep adding step size to L* until it is too bright.
+  -do
+    # Get sRGB image based on current L*.
+    +append[lab_l] [lab_ab],c
+    -name[-1] lab
+    +lab2srgb[lab]
+    -name[-1] mask
+    # Create binary mask indicating which pixels are too bright (max RGB >= 255).
+    -compose_channels[mask] max
+    # For pixels which are not too bright, add the step size to L*.
+    -threshold[mask] 255
+    -sub[mask] 1
+    -mul[mask] $step_size
+    -sub[lab_l] [mask]
+    # Repeat this step if some pixels were altered.
+    continue={im#-1}
+    -rm[lab,mask]
+  -while {$continue}
+  # Subtract the step size from L* for all pixels so that max RGB < 255.
+  -sub[lab_l] $step_size
+  # Cut step size in half.
+  step_size={$step_size/2}
+-while {$step_size>=$epsilon}
+
+# Convert L*a*b* to sRGB.
++append[lab_l] [lab_ab],c
+-name[-1] final
+-lab2srgb[final]
+
+-keep[final]
+
+
 # The following code is adapted from
 # https://raw.githubusercontent.com/dtschump/gmic/master/src/gmic_stdlib.gmic.
 # The licence information is included below.
