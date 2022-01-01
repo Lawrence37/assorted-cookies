@@ -1328,6 +1328,122 @@ normalizer={1/(2*pi*($strength*$radius)^2)} # Integral of the kernel.
 -endlocal -done
 
 
+#-------------------------------------------------------------------------------
+
+#@gui Deconvolve Gaussian: lawrence37_deconvolve_gaussian, lawrence37_deconvolve_gaussian_p(0)
+#@gui : Radius = float(5,0,10)
+#@gui : Denoise = float(0,-4,4)
+#@gui : Border correction = float(10,0,20)
+#@gui : Border interpolation = choice("bicubic","nearest","average","linear","Lanczos")
+#@gui : Use built-in deconvolution (no denoise) = bool(0)
+#@gui : sep = separator()
+#@gui : Preview kernel = bool(0)
+#@gui : Preview type = choice("Full","Forward horizontal","Forward vertical","Backward horizontal","Backward vertical","Duplicate top","Duplicate left",Duplicate bottom","Duplicate right","Duplicate horizontal","Duplicate vertical","Checkered","Checkered inverse")
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : Sharpens images blurred with a Gaussian blur. Border correction reduces
+#@gui : \"ringing\" artifacts along the border of the image. Bicubic and Lanczos
+#@gui : border interpolation offer the best results at almost no additional
+#@gui : processing cost. This filter uses the discrete Fourier transform to
+#@gui : deconvolve the blurred image. The denoise parameter has no effect when
+#@gui : using G'MIC's built-in FFT deconvolution, which appears to produce the
+#@gui : same results as when \"denoise\" is set to zero.
+#@gui : "}
+
+lawrence37_deconvolve_gaussian_p:
+if {$-2==0}
+  -gui_split_preview "-lawrence37_deconvolve_gaussian ${1--3}",$-1
+else
+  radius={max(0.5,$1)}
+  samples=16
+  {8*$radius},{8*$radius},1
+  -keep[-1]
+  -gaussian $radius
+  -mul 255
+  -keep[-1]
+endif
+
+
+lawrence37_deconvolve_gaussian:
+
+# Variables.
+radius={max(0.5,$1)}
+epsilon={10^($2-3)}
+extension={round($radius*max(0,$3))}
+if {$4==0}
+  interp=3
+elif {$4<=3}
+  interp={$4-1}
+else
+  interp=$4
+endif
+use_built_in=$5
+samples=16
+
+# Special case.
+if {$radius==0} -return endif
+
+-repeat $! -local[$>]
+
+-name[0] image
+
+# Convert to linear.
+-srgb2rgb_unbounded[image]
+
+# Make edges wrap to prevent ringing effect.
+-lawrence37_tile_lazy[image] $extension,$extension,$interp
+
+# Generate kernel.
+{8*$radius},{8*$radius},1
+-gaussian[-1] $radius
+-name[-1] kernel
+
+# Deconvolve image.
+if {$use_built_in}
+  -deconvolve_fft[image] [kernel]
+  -remove[kernel]
+else
+  image_w={w#$image}
+  image_h={h#$image}
+  image_is={is#$image}
+  kernel_w={w#$kernel}
+  kernel_h={h#$kernel}
+
+  # Resize kernel.
+  -crop[kernel] 0,0,{$image_w-1},{$image_h-1}
+  -shift[kernel] {-$kernel_w/2},{-$kernel_h/2},0,0,2
+
+  # Fourier transform.
+  -fft[image]
+  -name[image,{$image+1}] image_re,image_im
+  -fft[kernel]
+  -name[kernel,{$kernel+1}] kernel_re,kernel_im
+
+  # Deconvolve.
+  -div_complex[image_re,image_im] [kernel_re,kernel_im],$epsilon
+  -remove[kernel_re,kernel_im]
+  -name[-2,-1] quo_re,quo_im
+
+  # Inverse Fourier transform.
+  -ifft[quo_re,quo_im]
+  -name[-2,-1] deconv_re,deconv_im
+  -remove[deconv_im]
+
+  # Fix shift in lightness.
+  -mul[-1] {$image_is/is}
+endif
+
+-name[-1] sharpened
+
+# Crop the expansion.
+-crop[sharpened] 0,0,{w-1-$extension},{h-1-$extension}
+
+-rgb2srgb_unbounded[sharpened]
+
+-endlocal -done
+-return
+
+
 # The following code is adapted from
 # https://raw.githubusercontent.com/dtschump/gmic/master/src/gmic_stdlib.gmic.
 # The licence information is included below.
