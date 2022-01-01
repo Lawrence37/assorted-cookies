@@ -358,7 +358,39 @@ endif
 -return
 
 
-# ------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+
+#@gui Convolve FFT Normalized Borders : lawrence37_convolve_fft_normalized_borders, lawrence37_convolve_fft_normalized_borders_p
+
+lawrence37_convolve_fft_normalized_borders_p:
+-if {$!!=2}
+  -gui_print_preview "Requires exactly two input layers."
+  -return
+-endif
+-lawrence37_convolve_fft_normalized_borders[-2] [-1]
+
+
+lawrence37_convolve_fft_normalized_borders:
+
+-pass$1
+-name[-1] kernel
+-name[-2] img
+
+# Create normalizing image.
+{w#$img},{h#$img},1,1,1
+-name[-1] white
+
+# Convolve.
+-convolve_fft[img] [kernel],0
+-convolve_fft[white] [kernel],0
+-rm[kernel]
+
+# Normalize.
+-div[img] [white]
+-keep[img]
+
+
+#-------------------------------------------------------------------------------
 
 #@gui Contrast : lawrence37_contrast, lawrence37_contrast_p
 #@gui : Contrast = float(5,0.1,10)
@@ -1249,6 +1281,49 @@ lawrence37_highlight_control:
 
 # Convert back to sRGB.
 -rgb2srgb_unbounded[new]
+
+-endlocal -done
+
+
+#-------------------------------------------------------------------------------
+
+#@gui Exponential Glow: lawrence37_exponential_glow, lawrence37_exponential_glow
+#@gui : Strength = float(5, 0, 10)
+#@gui : Blend = float(50, 0, 100)
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : Radius: Approximate spread of the glow as a percentage of the image
+#@gui : diagonal.
+#@gui : <br/>
+#@gui : Blend: Percentage of the final image that comes from the glow.
+#@gui : "}
+
+lawrence37_exponential_glow:
+
+-repeat $! -local[$>]
+
+strength={$1/100}
+blend={$2/100}
+
+if {$strength==0||$blend==0}
+  -return
+endif
+
+-name[-1] orig
+-srgb2rgb_unbounded[orig]
+radius={sqrt((w#$orig)^2+(h#$orig))/2} # Image radius.
+normalizer={1/(2*pi*($strength*$radius)^2)} # Integral of the kernel.
+# Create kernel.
+{2*$radius},{2*$radius},1,1,[$normalizer*exp(-sqrt((x-$radius)^2+(y-$radius)^2)/$radius/$strength)]
+-name[-1] kernel
+# Create glow component.
++lawrence37_convolve_fft_normalized_borders[orig] [kernel]
+-name[-1] glow
+-remove[kernel]
+# Blend original image and glow.
+-blend[orig] [glow],alpha,$blend
+-remove[glow]
+-rgb2srgb_unbounded[orig]
 
 -endlocal -done
 
