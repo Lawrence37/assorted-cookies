@@ -26,6 +26,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+
 #-------------------------------------------------------------------------------
 
 #@gui <b>Testing</b>
@@ -126,7 +127,8 @@ if {$gamma!=1} -apply_gamma[result] $gamma endif
 -endlocal -done
 -return
 
-# ------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
 
 #@gui Focus Sharpen : lawrence37_focus_sharpen, lawrence37_focus_sharpen_p(0)
 #@gui : Radius = float(5,0,100)
@@ -253,6 +255,7 @@ endif
 -endlocal -done
 -return
 
+
 #-------------------------------------------------------------------------------
 
 #@gui Bokeh Ball : lawrence37_bokeh_ball, lawrence37_bokeh_ball
@@ -296,7 +299,7 @@ endif
 -return
 
 
-# ------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 
 # #@gui Lazy Tile : lawrence37_tile_lazy, lawrence37_tile_lazy
 # #@gui : x = int(37,1,100)
@@ -491,7 +494,8 @@ blue_factor={$blue_weight/$total_weight}
 -add[intensity] [blue]
 -remove[blue,orig]
 
-# ------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
 
 #@gui Incremental Guided Filter: lawrence37_incremental_guided_filter, lawrence37_incremental_guided_filter_p(0)
 #@gui : Radius = float(5,0,100)
