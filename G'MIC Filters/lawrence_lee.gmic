@@ -137,7 +137,6 @@ if {$gamma!=1} -apply_gamma[result] $gamma endif
 #@gui : Denoise = float(0,-4,4)
 #@gui : Border correction = float(10,0,20)
 #@gui : Border interpolation = choice("bicubic","nearest","average","linear","Lanczos")
-#@gui : Gamma = float(2.2,0.2,5)
 #@gui : Use built-in deconvolution (no denoise) = bool(0)
 #@gui : sep = separator()
 #@gui : Preview kernel = bool(0)
@@ -147,11 +146,11 @@ if {$gamma!=1} -apply_gamma[result] $gamma endif
 #@gui : Sharpens out-of-focus images produced by typical lenses with circular
 #@gui : apertures. Border correction reduces \"ringing\" artifacts along the
 #@gui : border of the image. Bicubic and Lanczos border interpolation offer the
-#@gui : best results at almost no additional processing cost. The gamma is the
-#@gui : gamma the picture is encoded in. This filter uses the discrete Fourier
-#@gui : transform to deconvolve the blurred image. The denoise parameter has no
-#@gui : effect when using G'MIC's built-in FFT deconvolution, which appears to
-#@gui : produce the same results as when \"denoise\" is set to zero.
+#@gui : best results at almost no additional processing cost. This filter uses
+#@gui : the discrete Fourier transform to deconvolve the blurred image. The
+#@ugi : denoise parameter has no effect when using G'MIC's built-in FFT
+#@gui : deconvolution, which appears to produce the same results as when
+#@gui : \"denoise\" is set to zero.
 #@gui : "}
 
 lawrence37_focus_sharpen_p:
@@ -182,8 +181,7 @@ elif {$6<=3}
 else
   interp=$6
 endif
-gamma={max(0,$7)}
-use_built_in=$8
+use_built_in=$7
 samples=16
 
 # Special case.
@@ -194,10 +192,7 @@ if {$radius==0} -return endif
 -name[0] image
 
 # Convert to linear.
-if {$gamma!=1}
-  command=-cut\ 0,100%\ -apply_gamma\ {1/$gamma}
-  -apply_channels[image] {``$command},rgb
-endif
+-srgb2rgb_unbounded[image]
 
 # Make edges wrap to prevent ringing effect.
 -lawrence37_tile_lazy[image] $extension,$extension,$interp
@@ -247,10 +242,7 @@ endif
 -crop[sharpened] 0,0,{w-1-$extension},{h-1-$extension}
 
 # Apply gamma.
-if {$gamma!=1}
-  command=-cut\ 0,100%\ -apply_gamma\ $gamma
-  -apply_channels[sharpened] {``$command},rgb
-endif
+-rgb2srgb_unbounded[sharpened]
 
 -endlocal -done
 -return
@@ -792,10 +784,14 @@ if {s#$target==4} # Has alpha channel.
   +channels[target] 3
   -name[-1] alpha
   -remove_opacity[target]
+  -srgb2rgb_unbounded[target]
   -mul[target] [detail]
+  -rgb2srgb_unbounded[target]
   -append[target] [alpha],c
 else
+  -srgb2rgb_unbounded[target]
   -mul[target] [detail]
+  -rgb2srgb_unbounded[target]
 endif
 
 -keep[target]
@@ -847,3 +843,96 @@ endif
 
 -endlocal -done
 -return
+
+
+# The following code is adapted from
+# https://raw.githubusercontent.com/dtschump/gmic/master/src/gmic_stdlib.gmic.
+# The licence information is included below.
+
+#
+#  File        : gmic_stdlib.gmic
+#                ( G'MIC command file )
+#
+#  Description : GREYC's Magic for Image Computing - Standard library
+#                ( https://gmic.eu )
+#
+#  Copyright   : David Tschumperlé
+#                ( https://tschumperle.users.greyc.fr/ )
+#
+#  Licenses    : This file is 'dual-licensed', you have to choose one
+#                of the two licenses below to apply.
+#
+#                CeCILL-C
+#                The CeCILL-C license is close to the GNU LGPL.
+#                ( http://cecill.info/licences/Licence_CeCILL-C_V1-en.html )
+#
+#            or  CeCILL v2.1
+#                The CeCILL license is compatible with the GNU GPL.
+#                ( http://cecill.info/licences/Licence_CeCILL_V2.1-en.html )
+#
+#  This software is governed either by the CeCILL or the CeCILL-C license
+#  under French law and abiding by the rules of distribution of free software.
+#  You can  use, modify and or redistribute the software under the terms of
+#  the CeCILL or CeCILL-C licenses as circulated by CEA, CNRS and INRIA
+#  at the following URL: "http://cecill.info".
+#
+#  As a counterpart to the access to the source code and  rights to copy,
+#  modify and redistribute granted by the license, users are provided only
+#  with a limited warranty  and the software's author,  the holder of the
+#  economic rights,  and the successive licensors  have only  limited
+#  liability.
+#
+#  In this respect, the user's attention is drawn to the risks associated
+#  with loading,  using,  modifying and/or developing or reproducing the
+#  software by the user in light of its specific status of free software,
+#  that may mean  that it is complicated to manipulate,  and  that  also
+#  therefore means  that it is reserved for developers  and  experienced
+#  professionals having in-depth computer knowledge. Users are therefore
+#  encouraged to load and test the software's suitability as regards their
+#  requirements in conditions enabling the security of their systems and/or
+#  data to be ensured and,  more generally, to use and operate it in the
+#  same conditions as regards security.
+#
+#  The fact that you are presently reading this means that you have had
+#  knowledge of the CeCILL and CeCILL-C licenses and that you accept its terms.
+#
+
+#------------------------------------------------------------------------------
+
+rgb2srgb_unbounded:
+f "val = i/255; sval = val<=0.0031308?val*12.92:1.055*val^0.416667 - 0.055; 255*sval"
+
+
+#------------------------------------------------------------------------------
+
+rgb_luminance:
+  remove_opacity
+  repeat $! l[$>]
+  if s==3 sh 0 sh[0] 1 sh[0] 2 *[1] 0.22248840 *[2] 0.71690369 *[3] 0.06060791 +[1-3] rm[1]
+  fi endl done
+  channels 0
+
+
+#------------------------------------------------------------------------------
+
+srgb2rgb_unbounded:
+f "sval = i/255; val = sval<=0.04045?sval/12.92:((sval + 0.055)/(1.055))^2.4; 255*val"
+
+
+#------------------------------------------------------------------------------
+
+xyz2rgb_unbounded:
+l[] if isnum("$1") illu={"$1>1?2:$1>0?1:0"} else if ["'$1'"]!=',' noarg fi illu=2 fi onfail noarg illu=2 endl
+if $illu==2 # E
+  mix_rgb {[2.3706743,-0.9000405,-0.4706338,\
+            -0.513885,1.4253036,0.0885814,\
+            0.0052982,-0.0146949,1.0093968]*255}
+elif $illu # D65
+  mix_rgb {[3.2404542,-1.5371385,-0.4985314,\
+            -0.9692660,1.8760108,0.0415560,\
+            0.0556434,-0.2040259,1.0572252]*255}
+else # D50
+  mix_rgb {[3.134274799724,-1.617275708956,-0.490724283042,\
+            -0.978795575994,1.916161689117,0.033453331711,\
+            0.071976988401,-0.228984974402,1.405718224383]*255}
+fi
