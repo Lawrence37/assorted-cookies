@@ -799,7 +799,253 @@ endif
 -endlocal -done
 -return
 
-# ------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+
+#@gui Contrast Transfer (fast): lawrence37_contrast_transfer_fast_gui, lawrence37_contrast_transfer_fast_gui
+#@gui : note = note{"
+#@gui : Transfers local contrast from the bottom layer (source) to the top layer
+#@gui : (target).
+#@gui : <br/>
+#@gui : "}
+#@gui : sep = separator()
+#@gui : Strength = float(100,0,100)
+#@gui : sep = separator()
+#@gui : note = note{"<b>Source Image</b>"}
+#@gui : Tameness = float(0,-4,4)
+#@gui : Tameness Threshold = float(0,-6,6)
+#@gui : Tone Recovery = bool(0)
+#@gui : Detail Amplification = float(0,-10,10)
+#@gui : sep = separator()
+#@gui : note = note{"<b>Transfer</b>"}
+#@gui : Targeting = float(7,-5,20)
+#@gui : Falloff = float(0,0,200)
+#@gui : Epsilon = float(1,0.01,10)
+#@gui : sep = separator()
+#@gui : Quality = int(1,1,8)
+#@gui : Contrast Smoothness = float(0,0,2)
+#@gui : sep = separator()
+#@gui : note = note{"
+#@gui : <br/>
+#@gui : <b>How to use</b>
+#@gui : <br/><br/>
+#@gui : You can adjust the tameness and detail amplification of the
+#@gui : source image. Tameness reduces strong contrast while preserving subtle
+#@gui : contrast. The threshold defines how the strong and subtle contrast are
+#@gui : separated. A high threshold places the separator higher, which means
+#@gui : more parts of the image are considered to have subtle contrast. These
+#@gui : areas are preserved, so the tameness effect is weaker. Tone recovery
+#@gui : restores global contrast removed by tameness. The tameness tools are for
+#@gui : advanced users. Other users may prefer the detail amplification. It
+#@gui : strengthens the contrast transferred to the target image.
+#@gui : <br/><br/>
+#@gui : Targeting reduces the strength of the contrast transfer in places where
+#@gui : the contrast of the source image is high. Falloff reduces the transfer
+#@gui : of coarse contrast while leaving fine contrast alone. Epsilon reduces
+#@gui : contrast transfer from dark regions of the source image. This is an
+#@gui : advanced setting and should be left as a small non-zero number.
+#@gui : <br/><br/>
+#@gui : Contrast is transferred for several levels of coarseness beginning with
+#@gui : pixel-level fineness up to the full image. Quality controls the number
+#@gui : of different contrast coarseness to sample per level. It is generally
+#@gui : okay to leave this number at 1 or 2. Contrast smoothness applies
+#@gui : smoothing to the extracted contrast and helps reduce irregularities.
+#@gui : <br/><br/>
+#@gui : <b>Performance</b>
+#@gui : <br/><br/>
+#@gui : Using tameness, tone recovery, detail amplification, targeting, and
+#@gui : falloff add work for the computer. Setting them to zero disables them
+#@gui : and improves performance. Quality increases the workload. Doubling the
+#@gui : quality will approximately double the time it takes to apply the
+#@gui : contrast transfer.
+#@gui : "}
+
+
+lawrence37_contrast_transfer_fast_gui:
+-if {$!!=2}
+  -gui_print_preview "Requires exactly two input layers."
+  -return
+-endif
+strength={$1/100}
+tameness=$2
+tame_threshold=$3
+tameness_correction=$4
+amp={$5/10}
+targeting=$6
+falloff={$7/100}
+epsilon={255*$8/100}
+level_steps=$9
+smoothness=$10
+-lawrence37_contrast_transfer_fast[-2] [-1],$strength,$tameness,$tame_threshold,$tameness_correction,$amp,$targeting,$falloff,$epsilon,$level_steps,$smoothness
+-keep[-2]
+-return
+
+
+lawrence37_contrast_transfer_fast:
+
+# Variables.
+strength=$2
+tameness={2^$3}
+tame_threshold={2^(-$4)}
+tameness_correction=$5
+amplification={10^$6}
+targeting=$7
+falloff=$8
+epsilon=$9
+steps_per_level=$10
+smoothness=$11
+
+-pass$1 -repeat {$!-1} -local[$>,-1]
+
+-name[-2] target
+-name[-1] source
+
+# Calculate levels and step size.
+max_level={ceil(log2(max(w#$target,h#$target)))+2}
+step_size={2^(1/$steps_per_level)}
+start_iteration={2*$steps_per_level}
+end_iteration={$steps_per_level*($max_level-1)+1}
+
+# Get luminance of source and target images.
++luminance[target]
+-name[-1] target_l
++luminance[source]
+-name[-1] source_l
+
+# Create multi-scale images.
+base_scale={2^($max_level-1)/max(w#$target_l,h#$target_l)}
+base_height={$base_scale*h#$target_l}
+base_width={$base_scale*w#$target_l}
++resize[target_l] $base_width,$base_height,1,1,6
+-max[-1] 0
++resize[source_l] $base_width,$base_height,1,1,6
+-max[-1] 0
+x=1
+for $x<{$end_iteration-$start_iteration+1}
+  +resize[-2] {$base_width/($step_size^$x)},{$base_height/($step_size^$x)},1,1,2
+  +resize[-2] {$base_width/($step_size^$x)},{$base_height/($step_size^$x)},1,1,2
+  x={$x+1}
+done
+
+# Start with no details.
+-input 100%,100%,1,1,1
+-name[-1] detail
+
+i=$start_iteration
+for $i<$end_iteration
+
+  # Renaming.
+  -name[-5] c_1
+  -name[-4] o_1
+  -name[-3] c_2
+  -name[-2] o_2
+
+  # Resize smaller images.
+  -resize[c_2] {w#$c_1},{h#$c_1},1,1,3
+  -resize[o_2] {w#$o_1},{h#$o_1},1,1,3
+
+  # Suppress details in areas of high local contrast.
+  if {$targeting!=0} # Optimization.
+    +add[o_1] $epsilon
+    -log[-1]
+    -gradient_norm[-1]
+    -name[-1] grad_norm
+    if {$targeting>0}
+      targeting_factor=$targeting
+    else
+      targeting_factor={1/abs($targeting)}
+    endif
+    level_targeting={-$targeting_factor*$epsilon}
+    -mul[grad_norm] $level_targeting
+    -exp[grad_norm]
+    -name[grad_norm] targeting_mask
+    if {$targeting<0}
+      -mul[targeting_mask] -1
+      -add[targeting_mask] 1
+    endif
+  endif
+
+  # Extract details for this level.
+  +div[c_1] [c_2]
+  -name[-1] c_d
+  +div[o_1] [o_2]
+  -name[-1] o_d
+  -remove[c_2,o_2]
+  if {$tameness!=1} # Optimization.
+    +log[o_d]
+    -abs[-1]
+    -mul[-1] {-$steps_per_level*$tame_threshold}
+    -exp[-1]
+    -add[-1] '$tameness*(1-i)'
+    -pow[-1] -1
+    -pow[o_d] [-1]
+    -remove[-1]
+  endif
+  if {$amplification!=0}
+    -pow[o_d] $amplification
+  endif
+  -div[o_d] [c_d]
+  -name[o_d] partial_detail
+  -remove[c_d]
+  -replace_nan[partial_detail] 1
+
+  # Apply this level's details to the cumulative details.
+  if {$targeting!=0}
+    -pow[partial_detail] [targeting_mask]
+    -remove[targeting_mask]
+  endif
+  if {$falloff!=0} # Optimization.
+    -pow[partial_detail] {$step_size^(-$falloff*($end_iteration-$i-1))}
+  endif
+  -resize[detail] {w#$partial_detail},{h#$partial_detail},1,1,3
+  if $smoothness
+    -blur[detail] $smoothness
+  endif
+  -mul[detail] [partial_detail]
+  -remove[partial_detail]
+
+  i={$i+1}
+done
+
+-resize[detail] {w#$target_l},{h#$target_l},1,1,6
+
+# Tameness correction.
+if {$tameness_correction&&$tameness!=1}
+  +blur[source_l] {$step_size^$end_iteration}
+  -name[-1] source_blur
+  +div[source_l] [source_blur]
+  -name[-1] correction
+  -remove[source_blur]
+  -replace_nan[correction] 1
+  -pow[correction] {1-1/$tameness}
+  -replace_inf[correction] 1
+  -mul[detail] [correction]
+  -remove[correction]
+endif
+
+# Apply details to target image.
+-pow[detail] $strength
+if {s#$target==4} # Has alpha channel.
+  +channels[target] 3
+  -name[-1] alpha
+  -remove_opacity[target]
+  -srgb2rgb_unbounded[target]
+  -mul[target] [detail]
+  -rgb2srgb_unbounded[target]
+  -append[target] [alpha],c
+else
+  -srgb2rgb_unbounded[target]
+  -mul[target] [detail]
+  -rgb2srgb_unbounded[target]
+endif
+
+-keep[target]
+
+-endlocal -done
+-return
+
+
+#-------------------------------------------------------------------------------
 
 #@gui Soft focus: lawrence37_soft_focus, lawrence37_soft_focus_p(1)
 #@gui : note = note{"
