@@ -651,6 +651,7 @@ end_iteration=1
 +luminance[source]
 -name[-1] source_l
 
+# Resize to a factor of 2.
 scale_comp={2^($max_level-1)/$diameter}
 base_diameter={$scale_comp*$diameter}
 
